@@ -22,7 +22,12 @@ import java.sql.SQLException;
 import java.util.Properties;
 
 import org.compiere.model.MClient;
+import org.compiere.model.MInOut;
+import org.compiere.model.MInventory;
 import org.compiere.model.MInvoice;
+import org.compiere.model.MMovement;
+import org.compiere.model.MMovementLine;
+import org.compiere.model.MWarehouse;
 import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.ModelValidator;
 import org.compiere.model.PO;
@@ -60,8 +65,14 @@ public class StocktakingValidator implements ModelValidator {
 			log.info("Initializing global validator: " + this.toString());
 		}
 		
-		/// Add DocValidator in Invoice Document
+		/// Add ModelValidator 
 		engine.addModelChange(MExtStocktaking.Table_Name, this);
+		
+		// Add DocValidator
+		// Freezing Stock
+		engine.addDocValidate(MInOut.Table_Name, this);
+		engine.addDocValidate(MInventory.Table_Name, this);
+		engine.addDocValidate(MMovement.Table_Name, this);
 	}
 
 	@Override
@@ -95,7 +106,11 @@ public class StocktakingValidator implements ModelValidator {
 		return Msg.getMsg(m_ctx, AD_Message);
 	}
 	
-	private String ERR_ONE_DOC_WAREHOUSE = "ONE_DOC_FOR_WAREHOUSE"; 
+	private String ERR_ONE_DOC_WAREHOUSE 	= "ONE_DOC_FOR_WAREHOUSE";
+	private String ERR_NO_WAREHOUSE_ID		= "NO_WAREHOUSE_ID";
+	private String ERR_NO_WAREHOUSE			= "NO_WAREHOUSE"; 
+	private String ERR_STOCK_FREEZING		= "STOCK_FREEZING";
+	
 
 	/**
 	 * @param stocktaking
@@ -123,8 +138,86 @@ public class StocktakingValidator implements ModelValidator {
 	}
 
 	public String docValidate(PO po, int timing) {
-		// TODO Auto-generated method stub
+		if(po == null)
+			return "";
+		
+		log.info("Doc Validator "+po.get_TableName() + " Timing: " + timing);
+		m_ctx = po.getCtx();
+		
+		if((MInOut.Table_Name.equals(po.get_TableName()) || MInventory.Table_Name.equals(po.get_TableName()) 
+			 && timing == ModelValidator.TIMING_BEFORE_PREPARE))
+		{
+			int M_Warehouse_ID = po.get_ValueAsInt(MInOut.COLUMNNAME_M_Warehouse_ID);
+			log.fine("Get M_Warehouse_Id :"+M_Warehouse_ID);
+			if(M_Warehouse_ID <= 0){
+				log.warning("Warehouse ID is zero ["+M_Warehouse_ID+"]" );
+				return getMsg(ERR_NO_WAREHOUSE_ID);
+			}
+			
+			MWarehouse warehouse = MWarehouse.get(m_ctx, M_Warehouse_ID, po.get_TrxName()) ;
+			log.fine("Warehouse :"+warehouse);
+			if(warehouse == null || warehouse.is_new()){
+				log.warning("No Warehouse "+warehouse);
+				return getMsg(ERR_NO_WAREHOUSE);
+			}
+			
+			try {
+				if(MExtStocktaking.isWarehouseStockFreezing(warehouse, po.get_TrxName()))
+					return getMsg(ERR_STOCK_FREEZING);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				log.saveError("Error", e);
+				return e.getMessage();
+			}
+		}
+		else if (MMovement.Table_Name.equals(po.get_TableName()) && timing == ModelValidator.TIMING_BEFORE_PREPARE )
+		{
+			MMovement movement = (MMovement)po;
+			MMovementLine lines[] = movement.getLines(true);
+			for(MMovementLine line : lines){
+				int M_Warehouse_ID = line.getM_Locator().getM_Warehouse_ID();		// From Warehouse
+				log.fine("Get M_Warehouse_Id :"+M_Warehouse_ID);
+				if(M_Warehouse_ID <= 0){
+					log.warning("Warehouse ID is zero ["+M_Warehouse_ID+"]" );
+					return getMsg(ERR_NO_WAREHOUSE_ID);
+				}
+				
+				int M_WarehouseTo_ID = line.getM_LocatorTo().getM_Warehouse_ID();	// To Warehouse
+				log.fine("Get M_WarehouseTo_ID :"+M_WarehouseTo_ID);
+				if(M_WarehouseTo_ID <= 0){
+					log.warning("Warehouse ID is zero ["+M_WarehouseTo_ID+"]" );
+					return getMsg(ERR_NO_WAREHOUSE_ID);
+				}
+				
+				MWarehouse warehouse = MWarehouse.get(m_ctx, M_Warehouse_ID, po.get_TrxName()) ;
+				log.fine("Warehouse :"+warehouse);
+				if(warehouse == null || warehouse.is_new()){
+					log.warning("No Warehouse "+warehouse);
+					return getMsg(ERR_NO_WAREHOUSE);
+				}
+				
+				MWarehouse warehouseTo = MWarehouse.get(m_ctx, M_WarehouseTo_ID, po.get_TrxName()) ;
+				log.fine("Warehouse :"+warehouseTo);
+				if(warehouse == null || warehouseTo.is_new()){
+					log.warning("No Warehouse "+warehouseTo);
+					return getMsg(ERR_NO_WAREHOUSE);
+				}
+				
+				
+				try {
+					if(MExtStocktaking.isWarehouseStockFreezing(warehouse, po.get_TrxName())
+					|| MExtStocktaking.isWarehouseStockFreezing(warehouseTo, po.get_TrxName()))
+						return getMsg(ERR_STOCK_FREEZING);
+				} catch (Exception e) {
+					// TODO Auto-generated catch block
+					log.saveError("Error", e);
+					return e.getMessage();
+				}
+			}
+		}
+		
 		return null;
 	}
+	
 
 }

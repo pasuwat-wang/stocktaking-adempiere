@@ -25,6 +25,7 @@ import java.util.Properties;
 
 import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MPeriod;
+import org.compiere.model.MWarehouse;
 import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.ModelValidator;
 import org.compiere.model.Query;
@@ -267,5 +268,24 @@ public class MExtStocktaking extends X_Ext_Stocktaking implements DocAction {
 		// TODO Auto-generated method stub
 		return null;
 	}
-
+	
+	public static boolean isWarehouseStockFreezing(MWarehouse warehouse , String trxName) throws Exception {
+		boolean ret = false ;
+		
+		String sql = "SELECT count(1) as no_of_record FROM Ext_Stocktaking st WHERE st.M_Warehouse_ID = ? AND st.freezestock = 'Y' AND st.DocStatus NOT IN ('CO','VO','CL') ";
+		PreparedStatement ppstmt = DB.prepareStatement(sql, trxName);
+		ppstmt.setInt(1, warehouse.getM_Warehouse_ID());
+		ResultSet rset = ppstmt.executeQuery();
+		if(rset.next()){
+			int no_of_record = rset.getInt(1);
+			if(no_of_record > 0)
+				ret = true;
+		}
+		
+		return ret;
+	}
+	
+	public boolean isStockFreezing(){
+		return "Y".equals(getFreezeStock());
+	}
 }
