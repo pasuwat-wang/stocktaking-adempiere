@@ -22,9 +22,9 @@ import java.sql.SQLException;
 import java.util.Properties;
 
 import org.compiere.model.MClient;
+import org.compiere.model.MDocType;
 import org.compiere.model.MInOut;
 import org.compiere.model.MInventory;
-import org.compiere.model.MInvoice;
 import org.compiere.model.MMovement;
 import org.compiere.model.MMovementLine;
 import org.compiere.model.MWarehouse;
@@ -34,6 +34,8 @@ import org.compiere.model.PO;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
 import org.compiere.util.Msg;
+
+import th.co.cenos.exceptions.StocktakingError;
 
 /**
  * @function stocktaking
@@ -51,9 +53,6 @@ public class StocktakingValidator implements ModelValidator {
 	
 	// Context Properties
 	private Properties m_ctx;
-	
-	// Error Message
-	private String message = "";
 
 	@Override
 	public void initialize(ModelValidationEngine engine, MClient client) {
@@ -95,7 +94,7 @@ public class StocktakingValidator implements ModelValidator {
 		if(MExtStocktaking.Table_Name.equals(po.get_TableName())){
 			MExtStocktaking stocktaking = (MExtStocktaking)po;
 			if(hasNotCompletedStocktakingForWarehouse(stocktaking)){ // Check Invoice Customer 
-				return getMsg(ERR_ONE_DOC_WAREHOUSE);
+				return getMsg(StocktakingError.ERR_ONE_DOC_WAREHOUSE);
 			}
 		}
 		
@@ -106,10 +105,7 @@ public class StocktakingValidator implements ModelValidator {
 		return Msg.getMsg(m_ctx, AD_Message);
 	}
 	
-	private String ERR_ONE_DOC_WAREHOUSE 	= "ONE_DOC_FOR_WAREHOUSE";
-	private String ERR_NO_WAREHOUSE_ID		= "NO_WAREHOUSE_ID";
-	private String ERR_NO_WAREHOUSE			= "NO_WAREHOUSE"; 
-	private String ERR_STOCK_FREEZING		= "STOCK_FREEZING";
+	
 	
 
 	/**
@@ -118,7 +114,7 @@ public class StocktakingValidator implements ModelValidator {
 	 * @throws SQLException 
 	 */
 	private boolean hasNotCompletedStocktakingForWarehouse(MExtStocktaking stocktaking) throws SQLException {
-		String sql = "SELECT count(1) FROM Ext_Stocktaking st WHERE st.M_Warehouse_ID = ? AND st.DocStatus NOT IN ('CO','VO') AND st.Ext_Stocktaking_ID <> ? ";
+		String sql = "SELECT count(1) FROM Ext_Stocktaking st WHERE st.M_Warehouse_ID = ? AND st.DocStatus NOT IN ('VO','CO') AND st.Ext_Stocktaking_ID <> ? ";
 		
 		PreparedStatement ppstmt = DB.prepareStatement(sql, stocktaking.get_TrxName());
 		ppstmt.setInt(1, stocktaking.getM_Warehouse_ID());
@@ -141,6 +137,25 @@ public class StocktakingValidator implements ModelValidator {
 		if(po == null)
 			return "";
 		
+		// Physical Inventory No Need to Check
+		if(MInventory.Table_Name.equals(po.get_TableName())){
+			MInventory inv = (MInventory)po;
+			if(MDocType.DOCBASETYPE_MaterialPhysicalInventory.equals(inv.getC_DocType().getDocBaseType())){
+				if(timing == ModelValidator.TIMING_AFTER_COMPLETE){
+					try {
+						unfreezeStock(inv);
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						log.saveError("ERROR", e);
+						return Msg.getMsg(m_ctx, StocktakingError.ERR_CANNOT_UNFREEZE_STOCK);
+					}
+				}
+				
+				return "";
+			}
+				
+		}
+		
 		log.info("Doc Validator "+po.get_TableName() + " Timing: " + timing);
 		m_ctx = po.getCtx();
 		
@@ -151,19 +166,19 @@ public class StocktakingValidator implements ModelValidator {
 			log.fine("Get M_Warehouse_Id :"+M_Warehouse_ID);
 			if(M_Warehouse_ID <= 0){
 				log.warning("Warehouse ID is zero ["+M_Warehouse_ID+"]" );
-				return getMsg(ERR_NO_WAREHOUSE_ID);
+				return getMsg(StocktakingError.ERR_NO_WAREHOUSE_ID);
 			}
 			
 			MWarehouse warehouse = MWarehouse.get(m_ctx, M_Warehouse_ID, po.get_TrxName()) ;
 			log.fine("Warehouse :"+warehouse);
 			if(warehouse == null || warehouse.is_new()){
 				log.warning("No Warehouse "+warehouse);
-				return getMsg(ERR_NO_WAREHOUSE);
+				return getMsg(StocktakingError.ERR_NO_WAREHOUSE);
 			}
 			
 			try {
 				if(MExtStocktaking.isWarehouseStockFreezing(warehouse, po.get_TrxName()))
-					return getMsg(ERR_STOCK_FREEZING);
+					return getMsg(StocktakingError.ERR_STOCK_FREEZING);
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				log.saveError("Error", e);
@@ -179,35 +194,35 @@ public class StocktakingValidator implements ModelValidator {
 				log.fine("Get M_Warehouse_Id :"+M_Warehouse_ID);
 				if(M_Warehouse_ID <= 0){
 					log.warning("Warehouse ID is zero ["+M_Warehouse_ID+"]" );
-					return getMsg(ERR_NO_WAREHOUSE_ID);
+					return getMsg(StocktakingError.ERR_NO_WAREHOUSE_ID);
 				}
 				
 				int M_WarehouseTo_ID = line.getM_LocatorTo().getM_Warehouse_ID();	// To Warehouse
 				log.fine("Get M_WarehouseTo_ID :"+M_WarehouseTo_ID);
 				if(M_WarehouseTo_ID <= 0){
 					log.warning("Warehouse ID is zero ["+M_WarehouseTo_ID+"]" );
-					return getMsg(ERR_NO_WAREHOUSE_ID);
+					return getMsg(StocktakingError.ERR_NO_WAREHOUSE_ID);
 				}
 				
 				MWarehouse warehouse = MWarehouse.get(m_ctx, M_Warehouse_ID, po.get_TrxName()) ;
 				log.fine("Warehouse :"+warehouse);
 				if(warehouse == null || warehouse.is_new()){
 					log.warning("No Warehouse "+warehouse);
-					return getMsg(ERR_NO_WAREHOUSE);
+					return getMsg(StocktakingError.ERR_NO_WAREHOUSE);
 				}
 				
 				MWarehouse warehouseTo = MWarehouse.get(m_ctx, M_WarehouseTo_ID, po.get_TrxName()) ;
 				log.fine("Warehouse :"+warehouseTo);
 				if(warehouse == null || warehouseTo.is_new()){
 					log.warning("No Warehouse "+warehouseTo);
-					return getMsg(ERR_NO_WAREHOUSE);
+					return getMsg(StocktakingError.ERR_NO_WAREHOUSE);
 				}
 				
 				
 				try {
 					if(MExtStocktaking.isWarehouseStockFreezing(warehouse, po.get_TrxName())
 					|| MExtStocktaking.isWarehouseStockFreezing(warehouseTo, po.get_TrxName()))
-						return getMsg(ERR_STOCK_FREEZING);
+						return getMsg(StocktakingError.ERR_STOCK_FREEZING);
 				} catch (Exception e) {
 					// TODO Auto-generated catch block
 					log.saveError("Error", e);
@@ -218,6 +233,16 @@ public class StocktakingValidator implements ModelValidator {
 		
 		return null;
 	}
-	
 
+	/**
+	 * @param inv
+	 */
+	private void unfreezeStock(MInventory inv) throws Exception {
+		// TODO Auto-generated method stub
+		String sql = "UPDATE Ext_Stocktaking  SET FreezeStock = 'N' WHERE M_Inventory_Id = ?  ";
+		PreparedStatement ppstmt = DB.prepareStatement(sql,inv.get_TrxName());
+		ppstmt.setInt(1, inv.getM_Inventory_ID());
+		int ret = ppstmt.executeUpdate();
+		log.fine("Update Unfreeze Stock"+ret+" "+inv.getM_Warehouse());
+	}
 }

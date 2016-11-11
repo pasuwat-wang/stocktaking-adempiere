@@ -14,45 +14,21 @@
  * ComPiere, Inc., 2620 Augustine Dr. #245, Santa Clara, CA 95054, USA        *
  * or via info@compiere.org or http://www.compiere.org/license.html           *
  *****************************************************************************/
-package th.co.cenos.model;
-
-import java.sql.ResultSet;
-import java.util.Properties;
+package th.co.cenos.exceptions;
 
 /**
  * @function stocktaking
- * @package th.co.cenos.model
- * @classname MExtStockTakingLine
+ * @package th.co.cenos.exceptions
+ * @classname StockTakingError
  * @author Pasuwat Wang (CENS ONLINE SERVICES)
- * @created Nov 2, 2016 12:32:42 PM
+ * @created Nov 9, 2016 11:11:16 AM
  */
-public class MExtStocktakingLine extends X_Ext_StocktakingLine {
-
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 5450346122981396011L;
-
-	/**
-	 * @param ctx
-	 * @param Ext_StockTakingLine_ID
-	 * @param trxName
-	 */
-	public MExtStocktakingLine(Properties ctx, int Ext_StockTakingLine_ID,
-			String trxName) {
-		super(ctx, Ext_StockTakingLine_ID, trxName);
-	}
-
-	/**
-	 * @param ctx
-	 * @param rs
-	 * @param trxName
-	 */
-	public MExtStocktakingLine(Properties ctx, ResultSet rs, String trxName) {
-		super(ctx, rs, trxName);
-	}
-	
-	public String toString(){
-		return String.format("Line [%s] ,Product [%s] ,Attribute Set Instance [%s] ,Locator [%s]", getLine(),getM_Product(), getM_AttributeSetInstance() , getM_Locator()) ;
-	}
+public class StocktakingError {
+	public static String ERR_CANNOT_CREATE_PI_DOC 	= "CANNOT_CREATE_PI_DOC";
+	public static String ERR_CANNOT_CREATE_PI_LINE	= "CANNOT_CREATE_PI_LINE";
+	public static String ERR_ONE_DOC_WAREHOUSE 		= "ONE_DOC_FOR_WAREHOUSE";
+	public static String ERR_NO_WAREHOUSE_ID		= "NO_WAREHOUSE_ID";
+	public static String ERR_NO_WAREHOUSE			= "NO_WAREHOUSE"; 
+	public static String ERR_STOCK_FREEZING			= "STOCK_FREEZING";
+	public static String ERR_CANNOT_UNFREEZE_STOCK	= "CANNOT_UNFREEZE_STOCK";
 }
